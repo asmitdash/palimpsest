@@ -10,7 +10,11 @@ Public surface:
 """
 
 from palimpsest.schemas import Atom, AtomKind, Verdict, Resolution
-from palimpsest.memory import Memory
+from palimpsest.memory import Memory, WriteOutcome
+from palimpsest.contradiction import ContradictionReport
 
-__all__ = ["Atom", "AtomKind", "Verdict", "Resolution", "Memory"]
-__version__ = "0.0.1"
+__all__ = [
+    "Atom", "AtomKind", "Verdict", "Resolution",
+    "Memory", "WriteOutcome", "ContradictionReport",
+]
+__version__ = "0.0.2"

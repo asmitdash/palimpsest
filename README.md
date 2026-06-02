@@ -12,7 +12,20 @@ palimpsest treats every write as a *verification event*. New atom → retrieve c
 
 ## Status
 
-**Day 1 — basic SDK only.** Write / read / lineage walk / stats / retract / reinforce. Contradiction detector lands Day 2; resolver Day 3; MCP server + HTTP API Week 2; contradiction-injection eval Week 3.
+**v0.0.2 — every contradiction-aware component shipped.**
+
+| Component | What it does |
+|---|---|
+| Episodic memory store | `kind="episodic"` atoms, time-window retrieval, source-chained replay, fast 14-day decay |
+| Semantic memory store | `kind="semantic"` atoms, 90-day decay, periodic consolidation pass merges near-duplicates |
+| Procedural store | `kind="procedural"` atoms, slow 180-day decay |
+| Contradiction detection engine | On every write, retrieves same-subject candidates, runs the LLM verifier, ignores cross-subject look-alikes |
+| Memory verifier | Strict prompt + structured tool output; defaults to "not contradicting" on uncertainty |
+| Resolver | `new_supersedes` / `old_wins` / `merge` / `keep_both` — fully wired into write path |
+| Lineage graph | Supersedes pointers form a DAG; `mem.lineage(id)` walks it; merged atoms inherit from every input |
+| Confidence engine | Time-based decay (kind-specific half-life), contradiction-pressure penalty, independent-source reinforcement |
+| Forgetting layer | `mem.decay()` auto-retracts below-threshold atoms; `mem.prune()` enforces per-subject caps. Lineage preserved. |
+| MCP server | Stdio JSON-RPC, exposes 8 tools (`palimpsest_write` / `_read` / `_lineage` / `_episodic` / `_consolidate` / `_decay` / `_prune` / `_stats`) |
 
 ## Install
 
@@ -71,13 +84,36 @@ Every memory unit is an `Atom`:
 PALIMPSEST_LLM_PROVIDER=stub PALIMPSEST_EMBEDDING_PROVIDER=stub pytest -v
 ```
 
+## MCP
+
+palimpsest exposes its SDK as an MCP server over stdio. To wire it into Claude Desktop or any MCP-aware client, point the client at:
+
+```bash
+python -m palimpsest.mcp --db /path/to/agent.db
+```
+
+Tools advertised: `palimpsest_write`, `palimpsest_read`, `palimpsest_lineage`, `palimpsest_episodic`, `palimpsest_consolidate`, `palimpsest_decay`, `palimpsest_prune`, `palimpsest_stats`.
+
+## Maintenance loop
+
+Three optional passes you call when you want — none of them block writes:
+
+```python
+# Periodic confidence decay (e.g. once per agent session boot)
+mem.decay()                     # episodic atoms decay fastest, semantic slowest
+
+# Hard prune (rare — call before backups, or after a noisy session)
+mem.prune(confidence_threshold=0.10, max_kept_per_subject=200)
+
+# Semantic consolidation (e.g. nightly cron)
+mem.consolidate(subject="user")  # merges near-duplicate atoms, preserves lineage
+```
+
 ## Roadmap
 
-- [x] Day 1 — schemas, SQLite + sqlite-vec store, providers, subject extractor, write / read / lineage SDK, stub-only tests
-- [ ] Day 2 — contradiction detector (verifier loop), automatic supersede on write
-- [ ] Day 3 — resolver (new wins / old wins / merge / keep both), confidence dynamics
-- [ ] Week 2 — MCP server, HTTP API, durable replay (`as_of`)
-- [ ] Week 3 — contradiction-injection eval vs. Letta / Mem0 / append-only baselines
+- [x] v0.0.1 (Day 1) — schemas, SQLite + sqlite-vec store, providers, subject extractor, write / read / lineage SDK, stub-only tests
+- [x] v0.0.2 — contradiction engine, verifier, resolver, confidence dynamics, episodic store, semantic consolidation, forgetting layer, MCP server, tests for every component
+- [ ] v0.0.3 — HTTP API, contradiction-injection eval vs. Letta / Mem0 / append-only baselines, real-LLM regression suite
 
 ## License
 

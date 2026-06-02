@@ -217,21 +217,53 @@ class Store:
         )
         self.conn.commit()
 
-    def record_reinforcement(self, atom_id: UUID, *, source: str | None, confidence: float) -> None:
+    def record_reinforcement(
+        self,
+        atom_id: UUID,
+        *,
+        source: str | None,
+        confidence: float,
+        new_confidence: float | None = None,
+    ) -> None:
+        """Append a reinforcement row + bump counters.
+
+        If `new_confidence` is provided, it is set verbatim (use this when the
+        confidence engine has already computed the right value). Otherwise we
+        do the legacy +0.05*confidence fallback.
+        """
         c = self.conn.cursor()
         c.execute(
             "INSERT INTO reinforcements(atom_id, source, confidence, created_at) VALUES (?, ?, ?, ?)",
             (str(atom_id), source, confidence, _utcnow_iso()),
         )
-        c.execute(
-            """
-            UPDATE atoms
-               SET reinforcement_count = reinforcement_count + 1,
-                   last_reinforced_at  = ?,
-                   confidence          = MIN(1.0, confidence + ?)
-             WHERE id = ?
-            """,
-            (_utcnow_iso(), 0.05 * confidence, str(atom_id)),
+        if new_confidence is None:
+            c.execute(
+                """
+                UPDATE atoms
+                   SET reinforcement_count = reinforcement_count + 1,
+                       last_reinforced_at  = ?,
+                       confidence          = MIN(1.0, confidence + ?)
+                 WHERE id = ?
+                """,
+                (_utcnow_iso(), 0.05 * confidence, str(atom_id)),
+            )
+        else:
+            c.execute(
+                """
+                UPDATE atoms
+                   SET reinforcement_count = reinforcement_count + 1,
+                       last_reinforced_at  = ?,
+                       confidence          = ?
+                 WHERE id = ?
+                """,
+                (_utcnow_iso(), max(0.0, min(1.0, new_confidence)), str(atom_id)),
+            )
+        self.conn.commit()
+
+    def set_confidence(self, atom_id: UUID, confidence: float) -> None:
+        self.conn.execute(
+            "UPDATE atoms SET confidence = ? WHERE id = ?",
+            (max(0.0, min(1.0, confidence)), str(atom_id)),
         )
         self.conn.commit()
 
@@ -347,6 +379,51 @@ class Store:
             sql += " AND status = ?"
             params.append(status)
         sql += " ORDER BY last_reinforced_at DESC"
+        rows = self.conn.execute(sql, params).fetchall()
+        return [_row_to_atom(r) for r in rows]
+
+    def all_active_subjects(self) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT DISTINCT subject FROM atoms WHERE status='active'"
+        ).fetchall()
+        return [r["subject"] for r in rows]
+
+    def list_active(
+        self, *, kind: AtomKind | None = None, limit: int = 1000,
+    ) -> list[Atom]:
+        sql = "SELECT * FROM atoms WHERE status='active'"
+        params: list[Any] = []
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        sql += " ORDER BY last_reinforced_at ASC LIMIT ?"
+        params.append(limit)
+        rows = self.conn.execute(sql, params).fetchall()
+        return [_row_to_atom(r) for r in rows]
+
+    def episodic_window(
+        self,
+        subject: str | None,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 500,
+    ) -> list[Atom]:
+        """Episodic-specific retrieval: ordered by created_at, optionally
+        bounded by a [start, end] window."""
+        sql = "SELECT * FROM atoms WHERE kind='episodic' AND status='active'"
+        params: list[Any] = []
+        if subject is not None:
+            sql += " AND subject = ?"
+            params.append(subject.lower().strip())
+        if start is not None:
+            sql += " AND created_at >= ?"
+            params.append(start.isoformat())
+        if end is not None:
+            sql += " AND created_at <= ?"
+            params.append(end.isoformat())
+        sql += " ORDER BY created_at ASC LIMIT ?"
+        params.append(limit)
         rows = self.conn.execute(sql, params).fetchall()
         return [_row_to_atom(r) for r in rows]
 

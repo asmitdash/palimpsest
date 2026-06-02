@@ -180,6 +180,8 @@ class StubLLM:
             payload = self._stub_verify(user)
         elif tool == "resolve_contradiction":
             payload = self._stub_resolve(user)
+        elif tool == "consolidate_atoms":
+            payload = self._stub_consolidate(user)
         else:
             payload = {}
         return LLMResult(
@@ -218,11 +220,45 @@ class StubLLM:
         return {"contradicts": False, "severity": "low", "rationale": "Stub: no conflict."}
 
     def _stub_resolve(self, user: str) -> dict[str, Any]:
-        # Default policy: new wins.
+        u = user.lower()
+        # Tests inject these tokens into atom content to drive each path.
+        if "[merge]" in u:
+            return {
+                "action": "merge",
+                "rationale": "Stub: explicit merge marker in input.",
+                "merged_content": "User has lived in both Berlin and Munich (merged).",
+            }
+        if "[old-wins]" in u:
+            return {
+                "action": "old_wins",
+                "rationale": "Stub: explicit old-wins marker in input.",
+                "merged_content": None,
+            }
+        if "[keep-both]" in u:
+            return {
+                "action": "keep_both",
+                "rationale": "Stub: explicit keep-both marker in input.",
+                "merged_content": None,
+            }
         return {
             "action": "new_supersedes",
             "rationale": "Stub: most recent assertion wins by default.",
             "merged_content": None,
+        }
+
+    def _stub_consolidate(self, user: str) -> dict[str, Any]:
+        u = user.lower()
+        # Refuse to merge when subjects/atoms genuinely differ.
+        if "[no-merge]" in u:
+            return {
+                "should_merge": False,
+                "merged_content": "",
+                "rationale": "Stub: explicit no-merge marker.",
+            }
+        return {
+            "should_merge": True,
+            "merged_content": "Consolidated semantic atom (stub merge).",
+            "rationale": "Stub: cluster looked like duplicates.",
         }
 
 

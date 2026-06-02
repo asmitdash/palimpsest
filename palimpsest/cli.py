@@ -73,7 +73,9 @@ def lineage(atom_id: str, db: Path = typer.Option(Path("palimpsest.db"), "--db")
         return
     for i, a in enumerate(chain):
         marker = "→" if i == len(chain) - 1 else " "
-        console.print(f"{marker} {a.id} [{a.status}] {a.content}")
+        # Disable rich markup parsing so '[superseded]' is rendered literally
+        # rather than being interpreted as a style tag.
+        console.print(f"{marker} {a.id} [{a.status}] {a.content}", markup=False)
 
 
 @app.command()

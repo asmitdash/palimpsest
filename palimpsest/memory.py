@@ -391,15 +391,22 @@ class Memory:
 
     # ---------- maintenance ----------
 
-    def consolidate(self, *, subject: str | None = None) -> list[UUID]:
+    def consolidate(
+        self, *, subject: str | None = None, threshold: float = 0.85,
+    ) -> list[UUID]:
         """Run the semantic-store consolidation pass. If `subject` is None,
-        runs across every active subject. Returns ids of newly merged atoms."""
+        runs across every active subject. `threshold` is the cosine-similarity
+        floor for two atoms to be considered duplicates — tune lower for
+        weaker embedders, higher for production embedders that hit very high
+        similarity on duplicates. Returns ids of newly merged atoms."""
         merged: list[UUID] = []
         subjects = [subject] if subject else self.store.all_active_subjects()
         for s in subjects:
             merged.extend(
                 consolidate_subject(
-                    self.store, subject=s, llm=self.llm, embedder=self.embedder,
+                    self.store, subject=s,
+                    llm=self.llm, embedder=self.embedder,
+                    threshold=threshold,
                 )
             )
         return merged

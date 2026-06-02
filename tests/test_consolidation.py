@@ -21,13 +21,15 @@ def mem():
 
 
 def test_consolidate_merges_near_duplicates(mem):
-    # Three near-duplicate atoms with overlapping tokens — the stub embedder is
-    # bag-of-words hashed, so heavy overlap yields high cosine similarity.
+    # Three near-duplicate atoms with overlapping tokens. The stub embedder is
+    # bag-of-words hashed; on these phrases it yields ~0.81 cosine similarity.
+    # We pass threshold=0.75 in the test; production callers using a real
+    # embedder should leave the default at 0.85.
     mem.write("User prefers coffee in the morning", subject="user", check_contradictions=False)
     mem.write("User prefers coffee morning",         subject="user", check_contradictions=False)
     mem.write("User prefers coffee in morning routine", subject="user", check_contradictions=False)
 
-    new_ids = mem.consolidate(subject="user")
+    new_ids = mem.consolidate(subject="user", threshold=0.75)
     assert len(new_ids) >= 1
     merged = mem.get(new_ids[0])
     assert merged is not None and merged.status == "active"

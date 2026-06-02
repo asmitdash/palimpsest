@@ -1,0 +1,22 @@
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.DS_Store
+
+# local memory stores
+*.db
+*.db-shm
+*.db-wal
+.palimpsest/
+
+# editor / OS
+.idea/
+.vscode/

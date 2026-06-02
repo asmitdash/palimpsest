@@ -106,24 +106,37 @@ class GeminiLLM:
 
 
 class GeminiEmbedder:
-    name = "gemini"
-    dimensions = 768
+    """Gemini embedding provider.
 
-    def __init__(self, *, api_key: str, model: str = "text-embedding-004") -> None:
+    Defaults to gemini-embedding-001 truncated to 768 dimensions via Matryoshka
+    Representation Learning (MRL). 768d is the palimpsest store default and
+    matches every other embedder we ship. Override `dimensions=` on construction
+    if you want native 1536 / 3072.
+    """
+
+    name = "gemini"
+
+    def __init__(
+        self, *, api_key: str, model: str = "gemini-embedding-001", dimensions: int = 768,
+    ) -> None:
         from google import genai
+        from google.genai import types
 
         self._client = genai.Client(api_key=api_key)
+        self._types = types
         self.model = model
+        self.dimensions = dimensions
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def embed(self, texts: list[str], *, input_type: str = "document") -> list[list[float]]:
         if not texts:
             return []
-        # google-genai >= 0.3 exposes embed_content via the embeddings api.
+        cfg = self._types.EmbedContentConfig(output_dimensionality=self.dimensions)
         results: list[list[float]] = []
         for t in texts:
-            r = self._client.models.embed_content(model=self.model, contents=t)
-            # response.embeddings is a list of {values: [...]} objects
+            r = self._client.models.embed_content(
+                model=self.model, contents=t, config=cfg,
+            )
             emb = r.embeddings[0]
             vals = getattr(emb, "values", None) or emb["values"]  # type: ignore[index]
             results.append(list(vals))
@@ -329,5 +342,10 @@ def get_embedding_provider() -> EmbeddingProvider:
         api_key = os.environ.get("GEMINI_API_KEY") or ""
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY not set for embeddings")
-        return GeminiEmbedder(api_key=api_key, model=os.environ.get("GEMINI_EMBEDDING_MODEL", "text-embedding-004"))
+        dim = int(os.environ.get("PALIMPSEST_GEMINI_EMBEDDING_DIM", "768"))
+        return GeminiEmbedder(
+            api_key=api_key,
+            model=os.environ.get("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"),
+            dimensions=dim,
+        )
     raise ValueError(f"Unknown PALIMPSEST_EMBEDDING_PROVIDER: {name}")
